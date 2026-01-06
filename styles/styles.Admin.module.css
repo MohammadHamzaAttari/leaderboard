@@ -1,0 +1,105 @@
+/* Admin-specific animations */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.slideIn {
+  animation: slideIn 0.3s ease-out;
+}
+
+.fadeIn {
+  animation: fadeIn 0.2s ease-out;
+}
+
+.scaleIn {
+  animation: scaleIn 0.2s ease-out;
+}
+
+/* Custom scrollbar for admin tables */
+.adminTable::-webkit-scrollbar {
+  height: 8px;
+}
+
+.adminTable::-webkit-scrollbar-track {
+  background: #1a1d24;
+  border-radius: 4px;
+}
+
+.adminTable::-webkit-scrollbar-thumb {
+  background: #3b4252;
+  border-radius: 4px;
+}
+
+.adminTable::-webkit-scrollbar-thumb:hover {
+  background: #4c566a;
+}
+
+/* Status badge animations */
+.statusBadge {
+  transition: all 0.2s ease;
+}
+
+.statusBadge:hover {
+  transform: scale(1.05);
+}
+
+/* Card hover effects */
+.adminCard {
+  transition: all 0.2s ease;
+}
+
+.adminCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+}
+
+/* Form input focus styles */
+.formInput:focus {
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+}
+
+/* Button press effect */
+.btnPress:active {
+  transform: scale(0.98);
+}
+
+/* Modal backdrop blur */
+.modalBackdrop {
+  backdrop-filter: blur(4px);
+}
+
+/* Table row hover highlight */
+.tableRow {
+  transition: background-color 0.15s ease;
+}
+
+.tableRow:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}

@@ -1,0 +1,407 @@
+/* Dashboard.module.css - Optional modular CSS for dashboard component */
+
+.dashboardContainer {
+  min-height: 100vh;
+  background-color: #0f1419;
+  color: #e4e7eb;
+  padding: 1.5rem;
+}
+
+.header {
+  max-width: 80rem;
+  margin: 0 auto;
+  margin-bottom: 2rem;
+}
+
+.title {
+  font-size: 2.25rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 2rem;
+}
+
+.metricsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.metricCard {
+  background: linear-gradient(135deg, #1a1f2e 0%, #252b3b 100%);
+  padding: 1.5rem;
+  border-radius: 12px;
+  border: 1px solid #2d3648;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+.metricLabel {
+  color: #9ca3af;
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+}
+
+.metricValue {
+  color: #ffffff;
+  font-size: 1.875rem;
+  font-weight: 700;
+}
+
+.leaderboardSection {
+  max-width: 80rem;
+  margin: 0 auto;
+  margin-bottom: 2rem;
+}
+
+.sectionTitle {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sectionSubtitle {
+  color: #9ca3af;
+  font-size: 0.875rem;
+  margin-bottom: 1rem;
+}
+
+.tableWrapper {
+  background: linear-gradient(135deg, #1a1f2e 0%, #252b3b 100%);
+  border-radius: 12px;
+  border: 1px solid #2d3648;
+  overflow: hidden;
+}
+
+.tableHeader {
+  display: grid;
+  grid-template-columns: 0.5fr 2fr 1fr 1fr 1.5fr 1.5fr;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  background-color: #252b3b;
+  border-bottom: 2px solid #2d3648;
+}
+
+.tableHeaderCell {
+  color: #9ca3af;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.tableBody {
+  display: flex;
+  flex-direction: column;
+}
+
+.tableRow {
+  display: grid;
+  grid-template-columns: 0.5fr 2fr 1fr 1fr 1.5fr 1.5fr;
+  gap: 1rem;
+  padding: 0.875rem 1.5rem;
+  border-bottom: 1px solid #2d3648;
+  transition: background-color 0.2s ease;
+}
+
+.tableRow:last-child {
+  border-bottom: none;
+}
+
+.tableRow:hover {
+  background-color: rgba(99, 102, 241, 0.1);
+}
+
+.tableCell {
+  color: #e4e7eb;
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+}
+
+.tableCellBold {
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.commissionCell {
+  color: #6366f1;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  transition: color 0.2s ease;
+}
+
+.commissionCell:hover {
+  color: #8b5cf6;
+  text-decoration: none;
+}
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.statusOnTrack {
+  background-color: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+}
+
+.statusBelowPace {
+  background-color: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+.alertsSection {
+  max-width: 80rem;
+  margin: 0 auto;
+  margin-bottom: 2rem;
+}
+
+.alert {
+  background-color: #1a1f2e;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.alertWarning {
+  border-left: 4px solid #f59e0b;
+}
+
+.alertError {
+  border-left: 4px solid #ef4444;
+}
+
+.alertSuccess {
+  border-left: 4px solid #10b981;
+}
+
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 1rem;
+}
+
+.modalContent {
+  background: linear-gradient(135deg, #1a1f2e 0%, #252b3b 100%);
+  padding: 2rem;
+  border-radius: 16px;
+  max-width: 600px;
+  width: 100%;
+  border: 1px solid #2d3648;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+  animation: modalSlideIn 0.3s ease-out;
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-50px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 1rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 2px solid #2d3648;
+}
+
+.modalTitle {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.modalCloseButton {
+  color: #9ca3af;
+  cursor: pointer;
+  transition: color 0.2s ease;
+  background: none;
+  border: none;
+  padding: 0.5rem;
+}
+
+.modalCloseButton:hover {
+  color: #ffffff;
+}
+
+.modalBody {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.modalRow {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #2d3648;
+}
+
+.modalLabel {
+  color: #9ca3af;
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+
+.modalValue {
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.totalEarningsRow {
+  border-bottom: none;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 2px solid #2d3648;
+}
+
+.totalEarningsLabel {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.totalEarningsValue {
+  font-size: 1.25rem;
+  color: #10b981;
+}
+
+.modalButton {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 0.75rem 2rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 1.5rem;
+  width: 100%;
+  transition: all 0.3s ease;
+}
+
+.modalButton:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(239, 68, 68, 0.4);
+}
+
+.footer {
+  max-width: 80rem;
+  margin: 0 auto;
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #2d3648;
+}
+
+.footerText {
+  color: #9ca3af;
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+.loadingContainer {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #0f1419;
+}
+
+.loadingText {
+  color: #ffffff;
+  font-size: 1.25rem;
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+  .metricsGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .dashboardContainer {
+    padding: 1rem;
+  }
+
+  .title {
+    font-size: 1.75rem;
+  }
+
+  .metricsGrid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .metricCard {
+    padding: 1rem;
+  }
+
+  .tableHeader,
+  .tableRow {
+    grid-template-columns: 0.5fr 1.5fr 0.8fr 0.8fr 1fr 1fr;
+    padding: 0.75rem 0.75rem;
+    font-size: 0.75rem;
+    gap: 0.5rem;
+  }
+
+  .tableHeaderCell {
+    font-size: 0.625rem;
+  }
+
+  .modalContent {
+    padding: 1.5rem;
+    max-width: calc(100% - 2rem);
+  }
+
+  .modalTitle {
+    font-size: 1.25rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .tableHeader {
+    display: none;
+  }
+
+  .tableRow {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+    padding: 1rem;
+  }
+
+  .tableCell::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: #9ca3af;
+    margin-right: 0.5rem;
+  }
+}
