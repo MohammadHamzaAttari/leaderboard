@@ -15,24 +15,28 @@ const LoginPage: React.FC = () => {
 export const getServerSideProps: GetServerSideProps = async (context) => {
   const { withSessionRoute } = await import('../lib/session');
 
-  return new Promise((resolve, reject) => {
-    withSessionRoute(context.req, context.res, async (req, res) => {
-      // If user checks session and IS authenticated, redirect to admin
-      if (req.session && req.session.user) {
-        resolve({
-          redirect: {
-            destination: '/admin',
-            permanent: false,
-          },
-        });
-        return;
-      }
+  // Return the result of withSessionRoute directly
+  return withSessionRoute(context.req, context.res, async (req, res) => {
+    // PROACTIVELY CLEAR LEGACY COOKIE to prevent loops
+    // If the user has an old 'authToken' cookie, nuke it.
+    if (context.req.cookies['authToken']) {
+      context.res.setHeader('Set-Cookie', 'authToken=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT');
+    }
 
-      // If NOT authenticated, just render the login page (don't redirect/loop)
-      resolve({
-        props: {},
-      });
-    }).catch(reject);
+    // If user checks session and IS authenticated, redirect to admin
+    if (req.session && req.session.user) {
+      return {
+        redirect: {
+          destination: '/admin',
+          permanent: false,
+        },
+      };
+    }
+
+    // If NOT authenticated, just render the login page (don't redirect/loop)
+    return {
+      props: {},
+    };
   });
 };
 
