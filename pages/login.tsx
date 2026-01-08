@@ -13,22 +13,26 @@ const LoginPage: React.FC = () => {
 
 // Redirect if already authenticated
 export const getServerSideProps: GetServerSideProps = async (context) => {
-  const { withSessionPage } = await import('../lib/auth');
+  const { withSessionRoute } = await import('../lib/session');
 
-  // Use session-based authentication check
-  return withSessionPage(context, async (req, res, user) => {
-    // User is already authenticated, redirect to admin dashboard
-    return {
-      redirect: {
-        destination: '/admin',
-        permanent: false,
-      },
-    };
-  }).catch(() => {
-    // Not authenticated or session error, show login page
-    return {
-      props: {},
-    };
+  return new Promise((resolve, reject) => {
+    withSessionRoute(context.req, context.res, async (req, res) => {
+      // If user checks session and IS authenticated, redirect to admin
+      if (req.session && req.session.user) {
+        resolve({
+          redirect: {
+            destination: '/admin',
+            permanent: false,
+          },
+        });
+        return;
+      }
+
+      // If NOT authenticated, just render the login page (don't redirect/loop)
+      resolve({
+        props: {},
+      });
+    }).catch(reject);
   });
 };
 
