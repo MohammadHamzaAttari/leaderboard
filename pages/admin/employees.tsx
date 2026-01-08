@@ -487,20 +487,8 @@ const EmployeesPage: React.FC = () => {
 };
 
 export const getServerSideProps: GetServerSideProps = async (context) => {
-  const token = context.req.cookies['authToken'];
-
-  if (!token) {
-    return {
-      redirect: {
-        destination: '/login',
-        permanent: false,
-      },
-    };
-  }
-
-  return {
-    props: {},
-  };
+  const { requireAuth } = await import('../../lib/auth');
+  return requireAuth(context);
 };
 
 export default EmployeesPage;

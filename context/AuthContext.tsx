@@ -13,10 +13,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // Check for existing session
     const checkAuth = async () => {
       try {
-        const token = localStorage.getItem('authToken');
         const savedUser = localStorage.getItem('user');
-        
-        if (token && savedUser) {
+
+        if (savedUser) {
           setUser(JSON.parse(savedUser));
         }
       } catch (error) {
@@ -35,15 +34,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(credentials),
+        credentials: 'include', // Important for session cookies
       });
 
       const data: AuthResponse = await response.json();
 
-      if (data.success && data.user && data.token) {
+      // Session-based auth: only check for success and user
+      if (data.success && data.user) {
         setUser(data.user);
-        localStorage.setItem('authToken', data.token);
         localStorage.setItem('user', JSON.stringify(data.user));
-        
+
         if (credentials.rememberMe) {
           localStorage.setItem('rememberMe', 'true');
         }
@@ -58,12 +58,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('user');
-    localStorage.removeItem('rememberMe');
-    router.push('/login');
+  const logout = async () => {
+    try {
+      // Call logout API to destroy session
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      // Clear local state regardless of API success
+      setUser(null);
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('user');
+      localStorage.removeItem('rememberMe');
+      router.push('/login');
+    }
   };
 
   return (

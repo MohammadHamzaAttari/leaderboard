@@ -92,8 +92,8 @@ const AdminSettings: React.FC = () => {
                         {/* Message Alert */}
                         {message && (
                             <div className={`flex items-start gap-3 p-4 rounded-xl border ${message.type === 'success'
-                                    ? 'bg-green-500/10 border-green-500/30 text-green-400'
-                                    : 'bg-red-500/10 border-red-500/30 text-red-400'
+                                ? 'bg-green-500/10 border-green-500/30 text-green-400'
+                                : 'bg-red-500/10 border-red-500/30 text-red-400'
                                 }`}>
                                 {message.type === 'success' ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
                                 <div className="flex-1">
@@ -230,20 +230,8 @@ const AdminSettings: React.FC = () => {
 };
 
 export const getServerSideProps: GetServerSideProps = async (context) => {
-    const token = context.req.cookies['authToken'];
-
-    if (!token) {
-        return {
-            redirect: {
-                destination: '/login',
-                permanent: false,
-            },
-        };
-    }
-
-    return {
-        props: {},
-    };
+    const { requireAuth } = await import('../../lib/auth');
+    return requireAuth(context);
 };
 
 export default AdminSettings;
