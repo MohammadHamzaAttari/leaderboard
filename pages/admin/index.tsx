@@ -141,7 +141,7 @@ const AdminDashboard: React.FC = () => {
                   <Sparkles className="animate-pulse" />
                   Welcome Back, Admin!
                 </h2>
-                <p className="text-white/90 flex items-center gap-2">
+                <p className="text-white/90 flex items-center gap-2" suppressHydrationWarning>
                   <Clock size={16} />
                   Last updated: {lastUpdate.toLocaleTimeString()}
                 </p>
