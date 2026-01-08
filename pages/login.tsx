@@ -13,21 +13,23 @@ const LoginPage: React.FC = () => {
 
 // Redirect if already authenticated
 export const getServerSideProps: GetServerSideProps = async (context) => {
-  // Check for auth cookie/token
-  const token = context.req.cookies['authToken'];
-  
-  if (token) {
+  const { withSessionPage } = await import('../lib/auth');
+
+  // Use session-based authentication check
+  return withSessionPage(context, async (req, res, user) => {
+    // User is already authenticated, redirect to admin dashboard
     return {
       redirect: {
         destination: '/admin',
         permanent: false,
       },
     };
-  }
-
-  return {
-    props: {},
-  };
+  }).catch(() => {
+    // Not authenticated or session error, show login page
+    return {
+      props: {},
+    };
+  });
 };
 
 export default LoginPage;
