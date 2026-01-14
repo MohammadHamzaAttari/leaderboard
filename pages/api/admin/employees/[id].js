@@ -100,9 +100,15 @@ export default async function handler(req, res) {
       const { db } = await connectToDatabase();
       const collection = db.collection(COLLECTION_NAME);
 
+      // Determine query: Try ghl_user_id, fallback to _id if valid ObjectId
+      let query = { ghl_user_id: id };
+      if (ObjectId.isValid(id)) {
+        query = { $or: [{ ghl_user_id: id }, { _id: new ObjectId(id) }] };
+      }
+
       switch (req.method) {
         case 'GET': {
-          const employee = await collection.findOne({ ghl_user_id: id });
+          const employee = await collection.findOne(query);
 
           if (!employee) {
             return res.status(404).json({
@@ -154,7 +160,7 @@ export default async function handler(req, res) {
             });
           }
 
-          const existingEmployee = await collection.findOne({ ghl_user_id: id });
+          const existingEmployee = await collection.findOne(query);
           if (!existingEmployee) {
             return res.status(404).json({
               success: false,
@@ -199,8 +205,10 @@ export default async function handler(req, res) {
           // But typically we are identifying by ghl_user_id so updating it while using it as lookup key 
           // essentially moves the primary key. For safety, let's keep lookup ID consistent.
 
-          await collection.updateOne({ ghl_user_id: id }, updateDoc);
-          const updatedEmployee = await collection.findOne({ ghl_user_id: updateDoc.$set.ghl_user_id || id });
+          await collection.updateOne(query, updateDoc);
+
+          // To fetch the updated document reliably, use the _id we already have
+          const updatedEmployee = await collection.findOne({ _id: existingEmployee._id });
 
           // Log successful update
           await logAdminAction('update_employee', {
@@ -208,8 +216,13 @@ export default async function handler(req, res) {
             targetId: id,
             targetType: 'employee',
             changes: { updated: updateDoc.$set },
-            message: `Updated employee: ${updatedEmployee.name}`
+            message: `Updated employee: ${updatedEmployee?.name || 'Unknown'}`
           });
+
+          if (!updatedEmployee) {
+            // Should not happen
+            throw new Error("Failed to retrieve updated employee");
+          }
 
           // Trigger webhook for agent update
           const employeeData = {
@@ -244,7 +257,7 @@ export default async function handler(req, res) {
             });
           }
 
-          const employee = await collection.findOne({ ghl_user_id: id });
+          const employee = await collection.findOne(query);
 
           if (!employee) {
             return res.status(404).json({
@@ -253,7 +266,7 @@ export default async function handler(req, res) {
             });
           }
 
-          await collection.deleteOne({ ghl_user_id: id });
+          await collection.deleteOne(query);
 
           // Log successful deletion
           await logAdminAction('delete_employee', {

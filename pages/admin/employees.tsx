@@ -3,7 +3,7 @@ import { GetServerSideProps } from 'next';
 import AdminLayout from '../../components/admin/AdminLayout';
 import EmployeeTable from '../../components/admin/EmployeeTable';
 import EmployeeModal from '../../components/admin/EmployeeModal';
-import { Employee, EmployeeFormData } from '../../types/employee';
+import { Employee } from '../../types/employee';
 import {
   Plus,
   Search,
@@ -14,9 +14,7 @@ import {
   X,
   AlertCircle,
   CheckCircle,
-  Users,
-  Filter,
-  SlidersHorizontal
+  Users
 } from 'lucide-react';
 
 interface PaginationInfo {
@@ -32,14 +30,14 @@ interface Toast {
   message: string;
 }
 
-const EmployeesPage: React.FC = () => {
+const EmployeesPage: React.FC<{ user: Employee, csrfToken: string }> = ({ user, csrfToken }) => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [departments, setDepartments] = useState<string[]>([]);
   const [pagination, setPagination] = useState<PaginationInfo>({
     currentPage: 1,
     totalPages: 1,
     totalItems: 0,
-    itemsPerPage: 20 // Increased from 10 to 20
+    itemsPerPage: 20
   });
 
   const [loading, setLoading] = useState(true);
@@ -49,11 +47,12 @@ const EmployeesPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
+  // Filters State
   const [searchQuery, setSearchQuery] = useState('');
   const [filterDepartment, setFilterDepartment] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
 
+  // Helper Functions
   const showToast = (type: 'success' | 'error', message: string) => {
     const id = Date.now();
     setToasts(prev => [...prev, { id, type, message }]);
@@ -68,7 +67,7 @@ const EmployeesPage: React.FC = () => {
 
       const params = new URLSearchParams({
         page: page.toString(),
-        limit: '20', // Increased from 10
+        limit: '20',
         ...(searchQuery && { search: searchQuery }),
         ...(filterDepartment && { department: filterDepartment }),
         ...(filterStatus && { status: filterStatus })
@@ -86,7 +85,7 @@ const EmployeesPage: React.FC = () => {
         currentPage: 1,
         totalPages: 1,
         totalItems: 0,
-        itemsPerPage: 10
+        itemsPerPage: 20
       });
       setDepartments(data.departments || []);
     } catch (error: any) {
@@ -104,8 +103,9 @@ const EmployeesPage: React.FC = () => {
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [searchQuery, filterDepartment, filterStatus]);
+  }, [searchQuery, filterDepartment, filterStatus, fetchEmployees]);
 
+  // Handler Functions
   const handleAddEmployee = () => {
     setSelectedEmployee(null);
     setModalOpen(true);
@@ -128,10 +128,10 @@ const EmployeesPage: React.FC = () => {
   const confirmDelete = async () => {
     if (!deleteConfirm) return;
 
-    // Ensure we have a GHL ID to use for deletion
-    const targetId = deleteConfirm.ghl_user_id;
+    // Ensure we have an ID to use for deletion (try GHL ID first, then internal ID)
+    const targetId = deleteConfirm.ghl_user_id || deleteConfirm._id;
     if (!targetId) {
-      showToast('error', 'Cannot delete: Employee is missing GHL ID');
+      showToast('error', 'Cannot delete: Employee is missing ID');
       return;
     }
 
@@ -139,7 +139,10 @@ const EmployeesPage: React.FC = () => {
       setIsSubmitting(true);
 
       const response = await fetch(`/api/admin/employees/${targetId}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: {
+          'x-csrf-token': csrfToken
+        }
       });
 
       const data = await response.json();
@@ -166,9 +169,10 @@ const EmployeesPage: React.FC = () => {
       let method = 'POST';
 
       if (selectedEmployee) {
-        const targetId = selectedEmployee.ghl_user_id;
+        // Use GHL ID if available, otherwise fallback to internal ID
+        const targetId = selectedEmployee.ghl_user_id || selectedEmployee._id;
         if (!targetId) {
-          throw new Error('Cannot update: Employee is missing GHL ID');
+          throw new Error('Cannot update: Employee is missing ID');
         }
         url = `/api/admin/employees/${targetId}`;
         method = 'PUT';
@@ -176,7 +180,10 @@ const EmployeesPage: React.FC = () => {
 
       const response = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-csrf-token': csrfToken
+        },
         body: JSON.stringify(data)
       });
 
@@ -211,15 +218,15 @@ const EmployeesPage: React.FC = () => {
     const csvContent = [
       headers.join(','),
       ...employees.map(emp => [
-        emp.employeeId,
+        emp.ghl_user_id || emp._id || '',
         `"${emp.name}"`,
-        emp.email,
-        emp.phone,
-        emp.department,
-        emp.position,
-        emp.hireDate,
-        emp.salary,
-        emp.status
+        emp.email || '',
+        emp.phone || '',
+        emp.department || '',
+        emp.position || '',
+        emp.hireDate || '',
+        emp.salary || '',
+        emp.status || ''
       ].join(','))
     ].join('\n');
 
