@@ -224,6 +224,14 @@ export default async function handler(req, res) {
         // Use sanitized data
         const sanitizedData = validation.sanitized;
 
+        // CRITICAL: Ensure GHL User ID is present since it's now used as primary key for updates/deletes
+        if (!sanitizedData.ghl_user_id || sanitizedData.ghl_user_id.trim() === '') {
+          return res.status(400).json({
+            success: false,
+            message: 'GHL User ID is required for all new employees'
+          });
+        }
+
         // Check for duplicate email
         const existingEmployee = await collection.findOne({
           email: sanitizedData.email
@@ -241,10 +249,22 @@ export default async function handler(req, res) {
           });
         }
 
+        // Check for duplicate GHL User ID
+        const existingGhlId = await collection.findOne({
+          ghl_user_id: sanitizedData.ghl_user_id
+        });
+
+        if (existingGhlId) {
+          return res.status(409).json({
+            success: false,
+            message: 'An employee with this GHL User ID already exists.'
+          });
+        }
+
         // Create employee document with sanitized data
         const newEmployee = {
           employeeId: generateEmployeeId(),
-          ghl_user_id: sanitizedData.ghl_user_id || '',
+          ghl_user_id: sanitizedData.ghl_user_id,
           name: sanitizedData.name,
           email: sanitizedData.email,
           phone: sanitizedData.phone || '',

@@ -49,6 +49,176 @@ async function connectToDatabase() {
   }
 }
 
+// --- Auto-Rollover Helper Functions ---
+
+/**
+ * Get previous month in YYYY-MM format
+ */
+function getPreviousMonth(monthStr) {
+  if (!monthStr) return null;
+  try {
+    const [year, month] = monthStr.split('-').map(Number);
+    const date = new Date(year, month - 2, 1);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Format month string for display
+ */
+function formatMonthLabel(monthStr) {
+  if (!monthStr) return 'Unknown';
+  try {
+    const date = new Date(monthStr + '-01');
+    return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  } catch (e) {
+    return monthStr;
+  }
+}
+
+/**
+ * Parse commission_property_pair
+ */
+function parseCommissionPairs(rawData) {
+  if (!rawData) return [];
+  if (Array.isArray(rawData)) return rawData;
+  if (typeof rawData === 'string') {
+    try {
+      const parsed = JSON.parse(rawData.replace(/\\"/g, '"'));
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return [];
+    }
+  }
+  return [];
+}
+
+/**
+ * Get incomplete commissions (not earned)
+ */
+function getIncompleteCommissions(commissionPairs, earnedDetails) {
+  const earnedCodes = new Set(
+    (earnedDetails || []).map(d => d.propertyCode?.trim().toLowerCase()).filter(Boolean)
+  );
+  return commissionPairs.filter(pair => {
+    if (!pair) return false;
+    const commValue = pair.commissionValue;
+    if (!commValue || commValue === 'null') return false;
+    const numValue = parseFloat(commValue);
+    if (isNaN(numValue) || numValue === 0) return false;
+    const normalizedCode = pair.propertyCode?.trim().toLowerCase();
+    return normalizedCode && !earnedCodes.has(normalizedCode);
+  });
+}
+
+/**
+ * Check and apply rollover for a given month (runs once per month)
+ */
+async function checkAndApplyRollover(db, targetMonth) {
+  try {
+    // Check if rollover was already applied for this month
+    const rolloverStatus = await db.collection('rollover_status').findOne({ month: targetMonth });
+    if (rolloverStatus?.applied) {
+      return false; // Already applied
+    }
+
+    const previousMonth = getPreviousMonth(targetMonth);
+    if (!previousMonth) return false;
+
+    // Fetch previous month data
+    const previousData = await db.collection('leader_board')
+      .find({ month: previousMonth })
+      .toArray();
+
+    if (!previousData || previousData.length === 0) {
+      // Mark as applied (no data to rollover)
+      await db.collection('rollover_status').updateOne(
+        { month: targetMonth },
+        { $set: { applied: true, appliedAt: new Date(), itemsMerged: 0, reason: 'no_previous_data' } },
+        { upsert: true }
+      );
+      return false;
+    }
+
+    // Build rollover map
+    const rolloverMap = new Map();
+    const sourceMonthLabel = formatMonthLabel(previousMonth);
+
+    for (const agent of previousData) {
+      const agentName = (agent['Agent Name'] || '').trim();
+      if (!agentName) continue;
+
+      const pairs = parseCommissionPairs(agent.commission_property_pair);
+      const incomplete = getIncompleteCommissions(pairs, agent.earnedDetails || []);
+
+      if (incomplete.length > 0) {
+        rolloverMap.set(agentName.toLowerCase(), incomplete.map(p => ({
+          commissionValue: p.commissionValue,
+          propertyCode: p.propertyCode,
+          sourceMonth: previousMonth,
+          sourceMonthLabel,
+          isRollover: true
+        })));
+      }
+    }
+
+    if (rolloverMap.size === 0) {
+      await db.collection('rollover_status').updateOne(
+        { month: targetMonth },
+        { $set: { applied: true, appliedAt: new Date(), itemsMerged: 0, reason: 'no_incomplete' } },
+        { upsert: true }
+      );
+      return false;
+    }
+
+    // Fetch current month data and merge
+    const currentData = await db.collection('leader_board').find({ month: targetMonth }).toArray();
+    let totalMerged = 0;
+
+    for (const agent of currentData) {
+      const agentName = (agent['Agent Name'] || '').trim();
+      const rolloverItems = rolloverMap.get(agentName.toLowerCase());
+      if (!rolloverItems) continue;
+
+      const currentPairs = parseCommissionPairs(agent.commission_property_pair);
+
+      // Check for existing rollover items to avoid duplicates
+      const existingKeys = new Set(
+        currentPairs.filter(p => p.isRollover).map(p => `${p.propertyCode?.toLowerCase()}_${p.sourceMonth}`)
+      );
+
+      const newItems = rolloverItems.filter(i =>
+        !existingKeys.has(`${i.propertyCode?.toLowerCase()}_${i.sourceMonth}`)
+      );
+
+      if (newItems.length > 0) {
+        const merged = [...currentPairs, ...newItems];
+        await db.collection('leader_board').updateOne(
+          { _id: agent._id },
+          { $set: { commission_property_pair: JSON.stringify(merged) } }
+        );
+        totalMerged += newItems.length;
+      }
+    }
+
+    // Mark as applied
+    await db.collection('rollover_status').updateOne(
+      { month: targetMonth },
+      { $set: { applied: true, appliedAt: new Date(), itemsMerged: totalMerged, sourceMonth: previousMonth } },
+      { upsert: true }
+    );
+
+    console.log(`[Auto-Rollover] Merged ${totalMerged} items from ${previousMonth} to ${targetMonth}`);
+    return totalMerged > 0;
+
+  } catch (error) {
+    console.error('[Auto-Rollover] Error:', error);
+    return false;
+  }
+}
+
 // --- API Handler Function ---
 export default async function handler(req, res) {
   // Only allow POST requests
@@ -67,6 +237,13 @@ export default async function handler(req, res) {
   try {
     const { db } = await connectToDatabase(); // Get database connection
 
+    // --- Auto-Rollover Check ---
+    // Check if rollover needs to be applied for this month
+    const rolloverApplied = await checkAndApplyRollover(db, month);
+    if (rolloverApplied) {
+      console.log(`[Auto-Rollover] Applied for month: ${month}`);
+    }
+
     // --- Fetch Leaderboard Data ---
     // Fetch records for the specified month from the 'leader_board' collection
     const leaderboard = await db.collection('leader_board')
@@ -77,13 +254,13 @@ export default async function handler(req, res) {
 
     // If no data is found for the month, return a 404 response
     if (!leaderboard || leaderboard.length === 0) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         message: `No leaderboard data found for the month: ${month}`,
         leaderboard: [], // Return empty array for consistency
         team: { totalSales: 0, target: 100, totalSalesAbove10: 0 } // Default team data
       });
     }
-    
+
     // --- Fetch Team Data ---
     // We need a month identifier to query the 'team' collection.
     // Assuming 'monthId' exists in the 'leader_board' documents.
@@ -102,7 +279,7 @@ export default async function handler(req, res) {
     } else {
       console.warn(`Could not determine monthId from leaderboard data for month: ${month}. Team data may be incomplete.`);
     }
-    
+
     // --- Transform Leaderboard Data ---
     // Map the raw MongoDB documents to the structure expected by the frontend interface.
     const transformedLeaderboard = leaderboard.map(item => ({
@@ -112,24 +289,24 @@ export default async function handler(req, res) {
       above_10: parseInt(item['Above 10']) || 0,
       commission: parseFloat(item['Commission (£)']) || 0, // Handle potential non-numeric values
       bonus: parseFloat(item['Bonus (£)']) || 0, // Handle potential non-numeric values
-      
+
       // === EARNED FIELD ===
       // Map the MongoDB field 'Earned (£)' to the frontend's 'commissionEarned' field
-      commissionEarned: parseFloat(item['Earned (£)']) || 0, 
-      
+      commissionEarned: parseFloat(item['Earned (£)']) || 0,
+
       // === EARNED DETAILS ===
       // Pass through the earnedDetails array from MongoDB
       // This contains the breakdown of earned amounts by property
       earnedDetails: item.earnedDetails || [], // Array of { propertyCode, commission }
-      
+
       // === COMMISSION DETAILS (existing) ===
       // Include commission breakdown for detailed view
       commission_property_pair: item.commission_property_pair || null,
-      
+
       // Other fields
       propertyCode: item.propertyCode || null, // Keep if used elsewhere
     }));
-    
+
     // --- Transform Team Data ---
     // Calculate team-level metrics for the frontend
     const transformedTeam = {
@@ -139,19 +316,19 @@ export default async function handler(req, res) {
       // Count agents who achieved "Above 10" sales
       totalSalesAbove10: transformedLeaderboard.filter(agent => agent.above_10 > 0).length
     };
-    
+
     // --- Send Response ---
     res.status(200).json({
       leaderboard: transformedLeaderboard,
       team: transformedTeam
     });
-    
+
   } catch (error) {
     console.error('Dashboard API Error:', error); // Log the error on the server side
-    
+
     // Send a standardized error response to the client
-    res.status(500).json({ 
-      message: 'Failed to retrieve dashboard data.', 
+    res.status(500).json({
+      message: 'Failed to retrieve dashboard data.',
       error: error.message || 'An unknown server error occurred.', // Include specific error message if available
       hint: 'Please ensure: 1) The MongoDB URI in your .env.local file is correct and accessible, 2) Your server has network access to MongoDB, 3) MongoDB Atlas IP Whitelist includes your server\'s IP address, 4) The collection name ("leader_board", "team") and field names ("Earned (£)", "Rank", etc.) match your MongoDB schema.'
     });

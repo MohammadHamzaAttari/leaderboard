@@ -128,10 +128,17 @@ const EmployeesPage: React.FC = () => {
   const confirmDelete = async () => {
     if (!deleteConfirm) return;
 
+    // Ensure we have a GHL ID to use for deletion
+    const targetId = deleteConfirm.ghl_user_id;
+    if (!targetId) {
+      showToast('error', 'Cannot delete: Employee is missing GHL ID');
+      return;
+    }
+
     try {
       setIsSubmitting(true);
 
-      const response = await fetch(`/api/admin/employees/${deleteConfirm._id}`, {
+      const response = await fetch(`/api/admin/employees/${targetId}`, {
         method: 'DELETE'
       });
 
@@ -155,11 +162,17 @@ const EmployeesPage: React.FC = () => {
     try {
       setIsSubmitting(true);
 
-      const url = selectedEmployee
-        ? `/api/admin/employees/${selectedEmployee._id}`
-        : '/api/admin/employees';
+      let url = '/api/admin/employees';
+      let method = 'POST';
 
-      const method = selectedEmployee ? 'PUT' : 'POST';
+      if (selectedEmployee) {
+        const targetId = selectedEmployee.ghl_user_id;
+        if (!targetId) {
+          throw new Error('Cannot update: Employee is missing GHL ID');
+        }
+        url = `/api/admin/employees/${targetId}`;
+        method = 'PUT';
+      }
 
       const response = await fetch(url, {
         method,

@@ -174,7 +174,7 @@ const EmployeeModal: React.FC<EmployeeModalProps> = ({
           {/* GHL ID Input (Manual) */}
           <div className="space-y-1">
             <label className="text-xs font-medium text-gray-400 uppercase tracking-wider">
-              GHL Contact ID (Optional)
+              GHL Contact ID (Primary Key)
             </label>
             <div className="relative">
               <Hash className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />

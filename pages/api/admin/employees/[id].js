@@ -86,24 +86,23 @@ export default async function handler(req, res) {
     }
 
     const auditContext = createAuditContext(req);
-    const { id } = req.query;
+    const { id } = req.query; // This 'id' is now treated as ghl_user_id
 
-    // Validate ObjectId
-    if (!id || !ObjectId.isValid(id)) {
+    // Validate ID - simplified since it's now a string ID from GHL
+    if (!id) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid employee ID format'
+        message: 'Employee ID is required'
       });
     }
 
     try {
       const { db } = await connectToDatabase();
-      // ✅ Updated to use constant
       const collection = db.collection(COLLECTION_NAME);
 
       switch (req.method) {
         case 'GET': {
-          const employee = await collection.findOne({ _id: new ObjectId(id) });
+          const employee = await collection.findOne({ ghl_user_id: id });
 
           if (!employee) {
             return res.status(404).json({
@@ -155,7 +154,7 @@ export default async function handler(req, res) {
             });
           }
 
-          const existingEmployee = await collection.findOne({ _id: new ObjectId(id) });
+          const existingEmployee = await collection.findOne({ ghl_user_id: id });
           if (!existingEmployee) {
             return res.status(404).json({
               success: false,
@@ -168,7 +167,7 @@ export default async function handler(req, res) {
           if (sanitizedData.email && sanitizedData.email !== existingEmployee.email) {
             const duplicateEmail = await collection.findOne({
               email: sanitizedData.email,
-              _id: { $ne: new ObjectId(id) }
+              ghl_user_id: { $ne: id }
             });
             if (duplicateEmail) {
               await logAdminAction('update_employee_failed', {
@@ -196,8 +195,12 @@ export default async function handler(req, res) {
             }
           };
 
-          await collection.updateOne({ _id: new ObjectId(id) }, updateDoc);
-          const updatedEmployee = await collection.findOne({ _id: new ObjectId(id) });
+          // If ghl_user_id is being updated, we need to ensure unique constraint if you encounter issues
+          // But typically we are identifying by ghl_user_id so updating it while using it as lookup key 
+          // essentially moves the primary key. For safety, let's keep lookup ID consistent.
+
+          await collection.updateOne({ ghl_user_id: id }, updateDoc);
+          const updatedEmployee = await collection.findOne({ ghl_user_id: updateDoc.$set.ghl_user_id || id });
 
           // Log successful update
           await logAdminAction('update_employee', {
@@ -241,7 +244,7 @@ export default async function handler(req, res) {
             });
           }
 
-          const employee = await collection.findOne({ _id: new ObjectId(id) });
+          const employee = await collection.findOne({ ghl_user_id: id });
 
           if (!employee) {
             return res.status(404).json({
@@ -250,7 +253,7 @@ export default async function handler(req, res) {
             });
           }
 
-          await collection.deleteOne({ _id: new ObjectId(id) });
+          await collection.deleteOne({ ghl_user_id: id });
 
           // Log successful deletion
           await logAdminAction('delete_employee', {

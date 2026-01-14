@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Lock, Unlock, AlertCircle, ChevronDown, Search, Download,
-  ZoomIn, ZoomOut, Eye, EyeOff, Maximize2, Minimize2, Menu, X, Check, RefreshCw
+  ZoomIn, ZoomOut, Eye, EyeOff, Maximize2, Minimize2, Menu, X, Check, RefreshCw,
+  ArrowLeftRight, Clock, Calendar
 } from 'lucide-react';
 
 interface MonthOption {
@@ -17,6 +18,12 @@ interface CommissionPropertyPair {
 interface EarnedDetail {
   propertyCode: string;
   commission: number;
+}
+
+interface RolloverCommission extends CommissionPropertyPair {
+  isRollover: boolean;
+  sourceMonth: string;
+  sourceMonthLabel: string;
 }
 
 interface AgentLeaderboardData {
@@ -51,8 +58,8 @@ const DWITSDashboard: React.FC = () => {
   const [teamData, setTeamData] = useState<TeamPerformanceData | null>(null);
   const [availableMonths, setAvailableMonths] = useState<MonthOption[]>([]);
   const [selectedMonth, setSelectedMonth] = useState('');
-  const [expandedAgentRank, setExpandedAgentRank] = useState<number | null>(null);
-  const [expandedEarnedAgentRank, setExpandedEarnedAgentRank] = useState<number | null>(null);
+  const [expandedAgentRank, setExpandedAgentRank] = useState<string | null>(null);
+  const [expandedEarnedAgentRank, setExpandedEarnedAgentRank] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,6 +68,12 @@ const DWITSDashboard: React.FC = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Rollover state
+  const [includeRollover, setIncludeRollover] = useState(false);
+  const [rolloverData, setRolloverData] = useState<Map<string, RolloverCommission[]>>(new Map());
+  const [rolloverLoading, setRolloverLoading] = useState(false);
+  const [rolloverSourceMonth, setRolloverSourceMonth] = useState<string>('');
 
   // Auto-refresh state (enabled by default with 30 seconds)
   const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
@@ -108,6 +121,126 @@ const DWITSDashboard: React.FC = () => {
     const hours = Math.floor(minutes / 60);
     return `${hours}h ago`;
   };
+
+  // Get previous month in YYYY-MM format
+  const getPreviousMonth = (monthStr: string): string => {
+    if (!monthStr) return '';
+    try {
+      const [year, month] = monthStr.split('-').map(Number);
+      const date = new Date(year, month - 2, 1); // month is 0-indexed, so month-2 for previous
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    } catch (e) {
+      console.error("Error calculating previous month:", e);
+      return '';
+    }
+  };
+
+  // Get incomplete commissions (not in earnedDetails) for an agent
+  const getIncompleteCommissions = useCallback((agent: AgentLeaderboardData): CommissionPropertyPair[] => {
+    const validPairs = agent.commissionPropertyPairs?.filter(pair => {
+      if (!pair) return false;
+      const commValue = pair.commissionValue;
+      if (commValue === null || commValue === undefined || commValue === '' || commValue === 'null') return false;
+      const numValue = parseFloat(commValue);
+      return !isNaN(numValue) && numValue !== 0;
+    }) || [];
+
+    const earnedPropertyCodes = new Set(
+      (agent.earnedDetails || []).map(d => d.propertyCode?.trim().toLowerCase()).filter(Boolean)
+    );
+
+    return validPairs.filter(pair => {
+      const normalizedCode = pair.propertyCode?.trim().toLowerCase();
+      return normalizedCode && !earnedPropertyCodes.has(normalizedCode);
+    });
+  }, []);
+
+  // Fetch rollover data from previous month
+  const fetchRolloverData = useCallback(async (previousMonthStr: string): Promise<void> => {
+    if (!previousMonthStr) {
+      setRolloverData(new Map());
+      return;
+    }
+
+    setRolloverLoading(true);
+    try {
+      const response = await fetch('/api/dashboard-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ month: previousMonthStr })
+      });
+
+      if (!response.ok) {
+        console.warn(`No data available for previous month: ${previousMonthStr}`);
+        setRolloverData(new Map());
+        return;
+      }
+
+      const data: ApiDashboardResponse = await response.json();
+      const monthLabel = formatMonthName(previousMonthStr);
+      const newRolloverData = new Map<string, RolloverCommission[]>();
+
+      data.leaderboard.forEach((agent) => {
+        const agentName = String(agent['Agent Name'] || agent.name || 'Unknown Agent').trim();
+
+        // Parse commission pairs
+        let commissionPropertyPairs: CommissionPropertyPair[] = [];
+        const rawCommissionData = agent['commission_property_pair'];
+        if (rawCommissionData && typeof rawCommissionData === 'string') {
+          try {
+            let cleanString = rawCommissionData.replace(/\\"/g, '"');
+            const parsed = JSON.parse(cleanString);
+            if (Array.isArray(parsed)) commissionPropertyPairs = parsed;
+          } catch (e) {
+            console.error("Error parsing rollover commission_property_pair:", e);
+          }
+        } else if (Array.isArray(rawCommissionData)) {
+          commissionPropertyPairs = rawCommissionData;
+        }
+
+        // Parse earned details
+        const earnedDetails = (agent.earnedDetails || []).filter((d: any) =>
+          d && d.propertyCode && d.commission !== null && d.commission !== undefined
+        );
+
+        // Get earned property codes
+        const earnedCodes = new Set(
+          earnedDetails.map((d: any) => d.propertyCode?.trim().toLowerCase()).filter(Boolean)
+        );
+
+        // Filter for incomplete commissions (not earned)
+        const incompleteCommissions: RolloverCommission[] = commissionPropertyPairs
+          .filter(pair => {
+            if (!pair) return false;
+            const commValue = pair.commissionValue;
+            if (commValue === null || commValue === undefined || commValue === '' || commValue === 'null') return false;
+            const numValue = parseFloat(commValue);
+            if (isNaN(numValue) || numValue === 0) return false;
+
+            const normalizedCode = pair.propertyCode?.trim().toLowerCase();
+            return normalizedCode && !earnedCodes.has(normalizedCode);
+          })
+          .map(pair => ({
+            ...pair,
+            isRollover: true,
+            sourceMonth: previousMonthStr,
+            sourceMonthLabel: monthLabel
+          }));
+
+        if (incompleteCommissions.length > 0) {
+          newRolloverData.set(agentName.toLowerCase(), incompleteCommissions);
+        }
+      });
+
+      setRolloverData(newRolloverData);
+      setRolloverSourceMonth(previousMonthStr);
+    } catch (error) {
+      console.error("Error fetching rollover data:", error);
+      setRolloverData(new Map());
+    } finally {
+      setRolloverLoading(false);
+    }
+  }, []);
 
   // API Fetching Functions
   const fetchAvailableMonths = async () => {
@@ -335,13 +468,31 @@ const DWITSDashboard: React.FC = () => {
     }
   }, [searchQuery, leaderboardData]);
 
+  // Handle rollover toggle
+  useEffect(() => {
+    if (includeRollover && selectedMonth) {
+      const previousMonth = getPreviousMonth(selectedMonth);
+      if (previousMonth && availableMonths.some(m => m.value === previousMonth)) {
+        fetchRolloverData(previousMonth);
+      } else {
+        setRolloverData(new Map());
+        setRolloverSourceMonth('');
+      }
+    } else {
+      setRolloverData(new Map());
+      setRolloverSourceMonth('');
+    }
+  }, [includeRollover, selectedMonth, availableMonths, fetchRolloverData]);
+
+
+  // Event Handlers
   // Event Handlers
   const handleCommissionClick = (agent: AgentLeaderboardData) => {
-    setExpandedAgentRank(expandedAgentRank === agent.rank ? null : agent.rank);
+    setExpandedAgentRank(expandedAgentRank === agent.name ? null : agent.name);
   };
 
   const handleEarnedClick = (agent: AgentLeaderboardData) => {
-    setExpandedEarnedAgentRank(expandedEarnedAgentRank === agent.rank ? null : agent.rank);
+    setExpandedEarnedAgentRank(expandedEarnedAgentRank === agent.name ? null : agent.name);
   };
 
   const getValidCommissionPairs = (agent: AgentLeaderboardData): CommissionPropertyPair[] => {
@@ -521,16 +672,43 @@ const DWITSDashboard: React.FC = () => {
               <h1 className="text-xl font-bold text-white text-center mb-2">
                 Team Overview
               </h1>
-              <div className="bg-gradient-to-r from-[#252932] to-[#2d3139] rounded-lg p-1 border border-gray-700 shadow-xl min-w-[200px]">
-                <select
-                  value={selectedMonth}
-                  onChange={(e) => setSelectedMonth(e.target.value)}
-                  className="w-full bg-[#1a1d24] text-white border-none rounded-md px-3 py-1 text-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50"
+              <div className="flex items-center gap-3">
+                <div className="bg-gradient-to-r from-[#252932] to-[#2d3139] rounded-lg p-1 border border-gray-700 shadow-xl min-w-[200px]">
+                  <select
+                    value={selectedMonth}
+                    onChange={(e) => setSelectedMonth(e.target.value)}
+                    className="w-full bg-[#1a1d24] text-white border-none rounded-md px-3 py-1 text-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50"
+                  >
+                    {availableMonths.map((month) => (
+                      <option key={month.value} value={month.value}>{month.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Rollover Toggle */}
+                <button
+                  onClick={() => setIncludeRollover(!includeRollover)}
+                  disabled={rolloverLoading}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all duration-200 ${includeRollover
+                    ? 'bg-orange-600/20 border-orange-500 text-orange-400'
+                    : 'bg-[#252932] border-gray-700 text-gray-400 hover:border-gray-500'
+                    } ${rolloverLoading ? 'opacity-50 cursor-wait' : 'cursor-pointer hover:shadow-lg'}`}
+                  title="Include incomplete commissions from previous month"
                 >
-                  {availableMonths.map((month) => (
-                    <option key={month.value} value={month.value}>{month.label}</option>
-                  ))}
-                </select>
+                  {rolloverLoading ? (
+                    <RefreshCw size={16} className="animate-spin" />
+                  ) : (
+                    <Calendar size={16} />
+                  )}
+                  <span className="text-sm font-medium whitespace-nowrap">
+                    {includeRollover ? 'Rollover ON' : 'Include Rollover'}
+                  </span>
+                  {includeRollover && rolloverSourceMonth && (
+                    <span className="text-xs bg-orange-500/30 px-2 py-0.5 rounded-full">
+                      +{formatMonthName(rolloverSourceMonth).split(' ')[0]}
+                    </span>
+                  )}
+                </button>
               </div>
             </div>
 
@@ -547,7 +725,7 @@ const DWITSDashboard: React.FC = () => {
           </div>
 
           {/* Mobile Month Selector */}
-          <div className={`lg:hidden ${mobileMenuOpen ? 'block' : 'hidden'} mb-4`}>
+          <div className={`lg:hidden ${mobileMenuOpen ? 'block' : 'hidden'} mb-4 space-y-3`}>
             <div className="bg-gradient-to-r from-[#252932] to-[#2d3139] rounded-lg p-1 border border-gray-700 shadow-xl">
               <select
                 value={selectedMonth}
@@ -559,6 +737,30 @@ const DWITSDashboard: React.FC = () => {
                 ))}
               </select>
             </div>
+
+            {/* Mobile Rollover Toggle */}
+            <button
+              onClick={() => setIncludeRollover(!includeRollover)}
+              disabled={rolloverLoading}
+              className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border transition-all duration-200 ${includeRollover
+                ? 'bg-orange-600/20 border-orange-500 text-orange-400'
+                : 'bg-[#252932] border-gray-700 text-gray-400'
+                } ${rolloverLoading ? 'opacity-50 cursor-wait' : ''}`}
+            >
+              {rolloverLoading ? (
+                <RefreshCw size={16} className="animate-spin" />
+              ) : (
+                <Calendar size={16} />
+              )}
+              <span className="text-sm font-medium">
+                {includeRollover ? 'Rollover ON' : 'Include Previous Month'}
+              </span>
+              {includeRollover && rolloverSourceMonth && (
+                <span className="text-xs bg-orange-500/30 px-2 py-0.5 rounded-full">
+                  +{formatMonthName(rolloverSourceMonth).split(' ')[0]}
+                </span>
+              )}
+            </button>
           </div>
 
           {/* Metrics Grid */}
@@ -726,38 +928,64 @@ const DWITSDashboard: React.FC = () => {
                         </div>
 
                         {/* Commission Details Dropdown */}
-                        {expandedAgentRank === agent.rank && (
+                        {expandedAgentRank === agent.name && (
                           <div className="bg-[#2d3139] border-t border-gray-700 px-4 py-3">
-                            <div className="text-sm font-semibold text-blue-400 mb-2">Commission Breakdown</div>
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="text-sm font-semibold text-blue-400">Commission Breakdown</div>
+                              {/* Count rollover items from the current month's data */}
+                              {includeRollover && agent.commissionPropertyPairs?.some(p => (p as RolloverCommission).isRollover) && (
+                                <div className="flex items-center gap-2 text-xs text-orange-400">
+                                  <Clock size={12} />
+                                  <span>Includes Rollover Items</span>
+                                </div>
+                              )}
+                            </div>
+
                             {getValidCommissionPairs(agent).length > 0 ? (
                               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                                {getValidCommissionPairs(agent).map((pair, idx) => {
-                                  const isEarned = isPropertyEarned(agent, pair.propertyCode);
-                                  return (
-                                    <div
-                                      key={idx}
-                                      className={`group relative flex items-center gap-3 p-3 rounded-lg border ${isEarned
-                                        ? 'border-green-500 bg-green-900/20'
-                                        : 'border-gray-700 bg-[#252932]'
-                                        } hover:bg-[#323742] hover:border-gray-600 transition-all duration-200`}
-                                    >
-                                      <div className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-sm font-bold text-white shadow-sm">
-                                        {idx + 1}
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2">
-                                          <div className="text-sm font-medium text-gray-300 truncate" title={pair.propertyCode || '—'}>
-                                            {pair.propertyCode && pair.propertyCode.trim() !== '' ? pair.propertyCode : '—'}
-                                          </div>
-                                          {isEarned && (
-                                            <Check className="text-green-500 flex-shrink-0" size={16} />
-                                          )}
+                                {getValidCommissionPairs(agent)
+                                  .filter(pair => includeRollover || !(pair as RolloverCommission).isRollover)
+                                  .map((pair, idx) => {
+                                    const isRolloverItem = (pair as RolloverCommission).isRollover;
+                                    const rolloverPair = pair as RolloverCommission;
+                                    const isEarned = isPropertyEarned(agent, pair.propertyCode);
+
+                                    return (
+                                      <div
+                                        key={`${isRolloverItem ? 'rollover' : 'current'}-${idx}`}
+                                        className={`group relative flex items-center gap-3 p-3 rounded-lg border transition-all duration-200 ${isRolloverItem
+                                          ? 'border-orange-500/50 bg-orange-900/10 hover:bg-orange-900/20'
+                                          : isEarned
+                                            ? 'border-green-500 bg-green-900/20'
+                                            : 'border-gray-700 bg-[#252932]'
+                                          } hover:border-gray-500`}
+                                      >
+                                        <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold text-white shadow-sm ${isRolloverItem ? 'bg-orange-500' : 'bg-blue-500'
+                                          }`}>
+                                          {idx + 1}
                                         </div>
-                                        <div className="text-sm font-bold text-blue-400 mt-1">{formatCurrency(pair.commissionValue)}</div>
+                                        <div className="flex-1 min-w-0">
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <div className="text-sm font-medium text-gray-300 truncate" title={pair.propertyCode || '—'}>
+                                              {pair.propertyCode && pair.propertyCode.trim() !== '' ? pair.propertyCode : '—'}
+                                            </div>
+                                            {isEarned && (
+                                              <Check className="text-green-500 flex-shrink-0" size={16} />
+                                            )}
+                                            {isRolloverItem && (
+                                              <span className="text-xs bg-orange-500/30 text-orange-300 px-2 py-0.5 rounded-full flex items-center gap-1 whitespace-nowrap">
+                                                <Clock size={10} />
+                                                {rolloverPair.sourceMonthLabel?.split(' ')[0] || 'Prev'}
+                                              </span>
+                                            )}
+                                          </div>
+                                          <div className={`text-sm font-bold mt-1 ${isRolloverItem ? 'text-orange-400' : 'text-blue-400'}`}>
+                                            {formatCurrency(pair.commissionValue)}
+                                          </div>
+                                        </div>
                                       </div>
-                                    </div>
-                                  );
-                                })}
+                                    );
+                                  })}
                               </div>
                             ) : (
                               <div className="text-center py-4">
@@ -769,7 +997,7 @@ const DWITSDashboard: React.FC = () => {
                         )}
 
                         {/* Earned Details Dropdown */}
-                        {expandedEarnedAgentRank === agent.rank && (
+                        {expandedEarnedAgentRank === agent.name && (
                           <div className="bg-[#2d3139] border-t border-gray-700 px-4 py-3">
                             <div className="text-sm font-semibold text-green-400 mb-2">Earned Breakdown</div>
                             {getValidEarnedDetails(agent).length > 0 ? (
