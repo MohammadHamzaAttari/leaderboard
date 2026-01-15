@@ -9,8 +9,8 @@ export default async function handler(req, res) {
         await client.connect();
         const db = client.db(DB_NAME);
 
-        const regex = new RegExp("Hussain|Ayan", 'i');
-        const months = ['2025-12', '2026-01'];
+        const regex = new RegExp("Dawid", 'i');
+        const months = ['2026-01'];
 
         let results = [];
 

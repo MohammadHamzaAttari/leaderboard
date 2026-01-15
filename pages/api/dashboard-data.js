@@ -153,9 +153,38 @@ export default async function handler(req, res) {
       // This contains the breakdown of earned amounts by property
       earnedDetails: item.earnedDetails || [], // Array of { propertyCode, commission }
 
-      // === COMMISSION DETAILS (existing) ===
-      // Include commission breakdown for detailed view
-      commission_property_pair: item.commission_property_pair || null,
+      // === COMMISSION DETAILS ===
+      // Combine 'commission_property_pair' (from n8n) with 'rollover_commission_list' (preserved locally)
+      // This protects rollover data from being overwritten by external syncs
+      commission_property_pair: (() => {
+        let mainList = item.commission_property_pair || [];
+        // Parse main list if string
+        if (typeof mainList === 'string') {
+          try { mainList = JSON.parse(mainList); } catch (e) { mainList = []; }
+        }
+        if (!Array.isArray(mainList)) mainList = [];
+
+        let rolloverList = item.rollover_commission_list || [];
+        // Parse rollover list if string
+        if (typeof rolloverList === 'string') {
+          try { rolloverList = JSON.parse(rolloverList); } catch (e) { rolloverList = []; }
+        }
+        if (!Array.isArray(rolloverList)) rolloverList = [];
+
+        // Merge: Active items first, then rollover items
+        // Deduplicate based on propertyCode + sourceMonth to be safe
+        const combined = [...mainList];
+        const existingKeys = new Set(combined.map(p => `${(p.propertyCode || '').toLowerCase()}_${p.sourceMonth || ''}`));
+
+        for (const rItem of rolloverList) {
+          const key = `${(rItem.propertyCode || '').toLowerCase()}_${rItem.sourceMonth || ''}`;
+          if (!existingKeys.has(key)) {
+            combined.push(rItem);
+            existingKeys.add(key);
+          }
+        }
+        return combined;
+      })(),
 
       // Other fields
       propertyCode: item.propertyCode || null, // Keep if used elsewhere
