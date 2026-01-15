@@ -71,9 +71,7 @@ const DWITSDashboard: React.FC = () => {
 
   // Rollover state
   const [includeRollover, setIncludeRollover] = useState(false);
-  const [rolloverData, setRolloverData] = useState<Map<string, RolloverCommission[]>>(new Map());
-  const [rolloverLoading, setRolloverLoading] = useState(false);
-  const [rolloverSourceMonth, setRolloverSourceMonth] = useState<string>('');
+  // Removed separate rolloverData state as it's now merged in main data
 
   // Auto-refresh state (enabled by default with 30 seconds)
   const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
@@ -155,92 +153,7 @@ const DWITSDashboard: React.FC = () => {
     });
   }, []);
 
-  // Fetch rollover data from previous month
-  const fetchRolloverData = useCallback(async (previousMonthStr: string): Promise<void> => {
-    if (!previousMonthStr) {
-      setRolloverData(new Map());
-      return;
-    }
 
-    setRolloverLoading(true);
-    try {
-      const response = await fetch('/api/dashboard-data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ month: previousMonthStr })
-      });
-
-      if (!response.ok) {
-        console.warn(`No data available for previous month: ${previousMonthStr}`);
-        setRolloverData(new Map());
-        return;
-      }
-
-      const data: ApiDashboardResponse = await response.json();
-      const monthLabel = formatMonthName(previousMonthStr);
-      const newRolloverData = new Map<string, RolloverCommission[]>();
-
-      data.leaderboard.forEach((agent) => {
-        const agentName = String(agent['Agent Name'] || agent.name || 'Unknown Agent').trim();
-
-        // Parse commission pairs
-        let commissionPropertyPairs: CommissionPropertyPair[] = [];
-        const rawCommissionData = agent['commission_property_pair'];
-        if (rawCommissionData && typeof rawCommissionData === 'string') {
-          try {
-            let cleanString = rawCommissionData.replace(/\\"/g, '"');
-            const parsed = JSON.parse(cleanString);
-            if (Array.isArray(parsed)) commissionPropertyPairs = parsed;
-          } catch (e) {
-            console.error("Error parsing rollover commission_property_pair:", e);
-          }
-        } else if (Array.isArray(rawCommissionData)) {
-          commissionPropertyPairs = rawCommissionData;
-        }
-
-        // Parse earned details
-        const earnedDetails = (agent.earnedDetails || []).filter((d: any) =>
-          d && d.propertyCode && d.commission !== null && d.commission !== undefined
-        );
-
-        // Get earned property codes
-        const earnedCodes = new Set(
-          earnedDetails.map((d: any) => d.propertyCode?.trim().toLowerCase()).filter(Boolean)
-        );
-
-        // Filter for incomplete commissions (not earned)
-        const incompleteCommissions: RolloverCommission[] = commissionPropertyPairs
-          .filter(pair => {
-            if (!pair) return false;
-            const commValue = pair.commissionValue;
-            if (commValue === null || commValue === undefined || commValue === '' || commValue === 'null') return false;
-            const numValue = parseFloat(commValue);
-            if (isNaN(numValue) || numValue === 0) return false;
-
-            const normalizedCode = pair.propertyCode?.trim().toLowerCase();
-            return normalizedCode && !earnedCodes.has(normalizedCode);
-          })
-          .map(pair => ({
-            ...pair,
-            isRollover: true,
-            sourceMonth: previousMonthStr,
-            sourceMonthLabel: monthLabel
-          }));
-
-        if (incompleteCommissions.length > 0) {
-          newRolloverData.set(agentName.toLowerCase(), incompleteCommissions);
-        }
-      });
-
-      setRolloverData(newRolloverData);
-      setRolloverSourceMonth(previousMonthStr);
-    } catch (error) {
-      console.error("Error fetching rollover data:", error);
-      setRolloverData(new Map());
-    } finally {
-      setRolloverLoading(false);
-    }
-  }, []);
 
   // API Fetching Functions
   const fetchAvailableMonths = async () => {
@@ -468,21 +381,7 @@ const DWITSDashboard: React.FC = () => {
     }
   }, [searchQuery, leaderboardData]);
 
-  // Handle rollover toggle
-  useEffect(() => {
-    if (includeRollover && selectedMonth) {
-      const previousMonth = getPreviousMonth(selectedMonth);
-      if (previousMonth && availableMonths.some(m => m.value === previousMonth)) {
-        fetchRolloverData(previousMonth);
-      } else {
-        setRolloverData(new Map());
-        setRolloverSourceMonth('');
-      }
-    } else {
-      setRolloverData(new Map());
-      setRolloverSourceMonth('');
-    }
-  }, [includeRollover, selectedMonth, availableMonths, fetchRolloverData]);
+
 
 
   // Event Handlers
@@ -688,26 +587,17 @@ const DWITSDashboard: React.FC = () => {
                 {/* Rollover Toggle */}
                 <button
                   onClick={() => setIncludeRollover(!includeRollover)}
-                  disabled={rolloverLoading}
                   className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all duration-200 ${includeRollover
                     ? 'bg-orange-600/20 border-orange-500 text-orange-400'
                     : 'bg-[#252932] border-gray-700 text-gray-400 hover:border-gray-500'
-                    } ${rolloverLoading ? 'opacity-50 cursor-wait' : 'cursor-pointer hover:shadow-lg'}`}
-                  title="Include incomplete commissions from previous month"
+                    } cursor-pointer hover:shadow-lg`}
+                  title="Toggle display of rollover items from previous month"
                 >
-                  {rolloverLoading ? (
-                    <RefreshCw size={16} className="animate-spin" />
-                  ) : (
-                    <Calendar size={16} />
-                  )}
+                  <Calendar size={16} />
                   <span className="text-sm font-medium whitespace-nowrap">
-                    {includeRollover ? 'Rollover ON' : 'Include Rollover'}
+                    {includeRollover ? 'Rollover ON' : 'Show Rollover'}
                   </span>
-                  {includeRollover && rolloverSourceMonth && (
-                    <span className="text-xs bg-orange-500/30 px-2 py-0.5 rounded-full">
-                      +{formatMonthName(rolloverSourceMonth).split(' ')[0]}
-                    </span>
-                  )}
+
                 </button>
               </div>
             </div>
@@ -738,28 +628,17 @@ const DWITSDashboard: React.FC = () => {
               </select>
             </div>
 
-            {/* Mobile Rollover Toggle */}
             <button
               onClick={() => setIncludeRollover(!includeRollover)}
-              disabled={rolloverLoading}
               className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border transition-all duration-200 ${includeRollover
                 ? 'bg-orange-600/20 border-orange-500 text-orange-400'
                 : 'bg-[#252932] border-gray-700 text-gray-400'
-                } ${rolloverLoading ? 'opacity-50 cursor-wait' : ''}`}
+                }`}
             >
-              {rolloverLoading ? (
-                <RefreshCw size={16} className="animate-spin" />
-              ) : (
-                <Calendar size={16} />
-              )}
+              <Calendar size={16} />
               <span className="text-sm font-medium">
-                {includeRollover ? 'Rollover ON' : 'Include Previous Month'}
+                {includeRollover ? 'Rollover ON' : 'Show Rollover'}
               </span>
-              {includeRollover && rolloverSourceMonth && (
-                <span className="text-xs bg-orange-500/30 px-2 py-0.5 rounded-full">
-                  +{formatMonthName(rolloverSourceMonth).split(' ')[0]}
-                </span>
-              )}
             </button>
           </div>
 

@@ -41,80 +41,7 @@ async function connectToDatabase() {
 }
 
 // --- Helper Functions ---
-
-/**
- * Get previous month in YYYY-MM format
- */
-function getPreviousMonth(monthStr) {
-    if (!monthStr) return null;
-    try {
-        const [year, month] = monthStr.split('-').map(Number);
-        const date = new Date(year, month - 2, 1); // month is 0-indexed, so month-2 for previous
-        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-    } catch (e) {
-        console.error("Error calculating previous month:", e);
-        return null;
-    }
-}
-
-/**
- * Format month string for display (e.g., "2025-12" -> "December 2025")
- */
-function formatMonthLabel(monthStr) {
-    if (!monthStr) return 'Unknown';
-    try {
-        const date = new Date(monthStr + '-01');
-        return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-    } catch (e) {
-        return monthStr;
-    }
-}
-
-/**
- * Parse commission_property_pair string or array
- */
-function parseCommissionPairs(rawData) {
-    if (!rawData) return [];
-
-    if (Array.isArray(rawData)) {
-        return rawData;
-    }
-
-    if (typeof rawData === 'string') {
-        try {
-            let cleanString = rawData.replace(/\\"/g, '"');
-            const parsed = JSON.parse(cleanString);
-            return Array.isArray(parsed) ? parsed : [];
-        } catch (e) {
-            console.error("Error parsing commission_property_pair:", e);
-            return [];
-        }
-    }
-
-    return [];
-}
-
-/**
- * Get incomplete commissions (not in earnedDetails)
- */
-function getIncompleteCommissions(commissionPairs, earnedDetails) {
-    const earnedCodes = new Set(
-        (earnedDetails || [])
-            .map(d => d.propertyCode?.trim().toLowerCase())
-            .filter(Boolean)
-    );
-
-    return commissionPairs.filter(pair => {
-        if (!pair) return false;
-        const commValue = pair.commissionValue;
-        if (commValue === null || commValue === undefined || commValue === '' || commValue === 'null') return false;
-        const numValue = parseFloat(commValue);
-        if (isNaN(numValue) || numValue === 0) return false;
-
-        const normalizedCode = pair.propertyCode?.trim().toLowerCase();
-        return normalizedCode && !earnedCodes.has(normalizedCode);
-    });
-}
+import { checkAndApplyRollover, getPreviousMonth } from '../../../lib/rollover';
 
 // --- API Handler ---
 export default async function handler(req, res) {
@@ -143,140 +70,24 @@ export default async function handler(req, res) {
             return res.status(400).json({ message: 'Could not calculate previous month.' });
         }
 
-        console.log(`[Merge Rollover] Target: ${targetMonth}, Source: ${previousMonth}`);
+        console.log(`[Merge Rollover - Manual] Target: ${targetMonth}, Source: ${previousMonth}`);
 
-        // Fetch previous month data
-        const previousMonthData = await db.collection('leader_board')
-            .find({ month: previousMonth })
-            .project({ _id: 0, 'Agent Name': 1, commission_property_pair: 1, earnedDetails: 1 })
-            .toArray();
+        // Force run logic - bypass "already applied" check if needed, but for now we follow idempotent
+        // To truly force, we might need a flag, but for now let's just run logic.
+        // Actually, the shared logic prevents re-run if marked applied. 
+        // For admin manual merge, we probably want to *force* it.
+        // So let's delete the status first to force re-evaluation.
+        await db.collection('rollover_status').deleteOne({ month: targetMonth });
 
-        if (!previousMonthData || previousMonthData.length === 0) {
-            return res.status(200).json({
-                message: `No previous month data found for ${previousMonth}`,
-                merged: 0,
-                targetMonth,
-                previousMonth
-            });
-        }
-
-        // Build a map of agent name -> incomplete commissions from previous month
-        const rolloverMap = new Map();
-        const sourceMonthLabel = formatMonthLabel(previousMonth);
-
-        for (const agent of previousMonthData) {
-            const agentName = (agent['Agent Name'] || '').trim();
-            if (!agentName) continue;
-
-            const commissionPairs = parseCommissionPairs(agent.commission_property_pair);
-            const earnedDetails = agent.earnedDetails || [];
-
-            // Get incomplete commissions and add source identification
-            const incomplete = getIncompleteCommissions(commissionPairs, earnedDetails);
-
-            if (incomplete.length > 0) {
-                const rolloverItems = incomplete.map(pair => ({
-                    commissionValue: pair.commissionValue,
-                    propertyCode: pair.propertyCode,
-                    sourceMonth: previousMonth,
-                    sourceMonthLabel: sourceMonthLabel,
-                    isRollover: true
-                }));
-
-                rolloverMap.set(agentName.toLowerCase(), rolloverItems);
-            }
-        }
-
-        if (rolloverMap.size === 0) {
-            return res.status(200).json({
-                message: `No incomplete commissions found in ${previousMonth} to roll over`,
-                merged: 0,
-                targetMonth,
-                previousMonth
-            });
-        }
-
-        // Fetch current month data and merge rollover items
-        const currentMonthData = await db.collection('leader_board')
-            .find({ month: targetMonth })
-            .toArray();
-
-        if (!currentMonthData || currentMonthData.length === 0) {
-            return res.status(404).json({
-                message: `No data found for target month ${targetMonth}`,
-                targetMonth,
-                previousMonth
-            });
-        }
-
-        let totalMerged = 0;
-        let agentsUpdated = 0;
-        const updateResults = [];
-
-        for (const agentRecord of currentMonthData) {
-            const agentName = (agentRecord['Agent Name'] || '').trim();
-            const agentKey = agentName.toLowerCase();
-
-            if (!rolloverMap.has(agentKey)) {
-                continue; // No rollover data for this agent
-            }
-
-            const rolloverItems = rolloverMap.get(agentKey);
-            const currentPairs = parseCommissionPairs(agentRecord.commission_property_pair);
-
-            // Check which rollover items already exist (to avoid re-adding on multiple runs)
-            const existingRolloverCodes = new Set(
-                currentPairs
-                    .filter(p => p.isRollover === true)
-                    .map(p => `${p.propertyCode?.trim().toLowerCase()}_${p.sourceMonth}`)
-            );
-
-            // Filter out rollover items that are already present
-            const newRolloverItems = rolloverItems.filter(item => {
-                const key = `${item.propertyCode?.trim().toLowerCase()}_${item.sourceMonth}`;
-                return !existingRolloverCodes.has(key);
-            });
-
-            if (newRolloverItems.length === 0) {
-                continue; // All rollover items already exist
-            }
-
-            // Merge: current pairs + new rollover items
-            const mergedPairs = [...currentPairs, ...newRolloverItems];
-
-            // Update the database record
-            const updateResult = await db.collection('leader_board').updateOne(
-                { _id: agentRecord._id },
-                {
-                    $set: {
-                        commission_property_pair: JSON.stringify(mergedPairs),
-                        rollover_merged_at: new Date().toISOString(),
-                        rollover_source_month: previousMonth
-                    }
-                }
-            );
-
-            if (updateResult.modifiedCount > 0) {
-                agentsUpdated++;
-                totalMerged += newRolloverItems.length;
-                updateResults.push({
-                    agent: agentName,
-                    itemsAdded: newRolloverItems.length,
-                    propertyCodes: newRolloverItems.map(i => i.propertyCode)
-                });
-            }
-        }
-
-        console.log(`[Merge Rollover] Completed: ${agentsUpdated} agents, ${totalMerged} items merged`);
+        const result = await checkAndApplyRollover(db, targetMonth);
 
         return res.status(200).json({
-            success: true,
-            message: `Successfully merged rollover data from ${previousMonth} into ${targetMonth}`,
+            success: result.applied,
+            message: result.message || 'Rollover process completed',
             targetMonth,
             previousMonth,
-            agentsUpdated,
-            totalItemsMerged: totalMerged,
-            details: updateResults
+            itemsMerged: result.itemsMerged,
+            details: result // Pass through full details
         });
 
     } catch (error) {
