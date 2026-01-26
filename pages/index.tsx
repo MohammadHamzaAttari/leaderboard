@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Lock, Unlock, AlertCircle, Search, Download,
-  ZoomIn, ZoomOut, Maximize2, Minimize2, Menu, X, Check, RefreshCw,
-  Clock, Calendar, Trophy, Zap, TrendingUp, TrendingDown, Target,
-  CheckCircle, CheckCircle2, CircleDot, Circle
+  Maximize2, Minimize2, Menu, X, Check, RefreshCw,
+  Clock, Calendar, Trophy, Zap, TrendingUp, TrendingDown,
+  CheckCircle2, Circle
 } from 'lucide-react';
 
 interface MonthOption {
@@ -96,7 +96,7 @@ const getWeekTarget = (week: number): number => {
   }
 };
 
-// ✅ Beautiful Animated Checkmark Component
+// Beautiful Animated Checkmark Component
 const EarnedCheckmark: React.FC<{ size?: 'sm' | 'md' | 'lg' }> = ({ size = 'md' }) => {
   const sizeClasses = {
     sm: 'w-4 h-4',
@@ -106,9 +106,7 @@ const EarnedCheckmark: React.FC<{ size?: 'sm' | 'md' | 'lg' }> = ({ size = 'md' 
 
   return (
     <div className={`relative ${sizeClasses[size]}`}>
-      {/* Glow effect */}
       <div className="absolute inset-0 bg-green-500 rounded-full blur-sm opacity-50 animate-pulse"></div>
-      {/* Main checkmark circle */}
       <div className="relative bg-gradient-to-br from-green-400 to-emerald-600 rounded-full flex items-center justify-center w-full h-full shadow-lg shadow-green-500/30">
         <Check className="text-white" size={size === 'sm' ? 10 : size === 'md' ? 12 : 14} strokeWidth={3} />
       </div>
@@ -116,7 +114,7 @@ const EarnedCheckmark: React.FC<{ size?: 'sm' | 'md' | 'lg' }> = ({ size = 'md' 
   );
 };
 
-// ✅ Pending/Not Earned Indicator Component
+// Pending/Not Earned Indicator Component
 const PendingIndicator: React.FC<{ size?: 'sm' | 'md' | 'lg' }> = ({ size = 'md' }) => {
   const sizeClasses = {
     sm: 'w-4 h-4',
@@ -218,7 +216,6 @@ const DWITSDashboard: React.FC = () => {
     );
   };
 
-  // Get earned amount for a property
   const getEarnedAmount = (agent: AgentLeaderboardData, propertyCode: string | null): number | null => {
     if (!propertyCode || !agent.earnedDetails || !Array.isArray(agent.earnedDetails)) return null;
     const normalizedPropertyCode = propertyCode.trim().toLowerCase();
@@ -410,6 +407,10 @@ const DWITSDashboard: React.FC = () => {
   };
 
   const downloadCSV = () => {
+    // Need to reference isTeamBonusUnlocked here
+    const currentSales = teamData?.totalSales || 0;
+    const unlocked = currentSales >= 100;
+    
     const headers = ['Rank', 'Agent Name', 'Sales', 'Above 10', 'Commission (£)', 'Earned (£)', 'Total Bonus (£)', 'Speed Bonus', '1st to 20 Winner', 'First to 20 Bonus Status'];
     const csvContent = [
       headers.join(','),
@@ -424,7 +425,7 @@ const DWITSDashboard: React.FC = () => {
           agent.totalBonus,
           agent.speedBonus > 0 ? 'Yes' : 'No',
           agent.isFirstTo20Winner ? 'Yes' : 'No',
-          agent.isFirstTo20Winner ? (isTeamBonusUnlocked ? 'Awarded' : 'Pending Unlock') : 'N/A'
+          agent.isFirstTo20Winner ? (unlocked ? 'Awarded' : 'Pending Unlock') : 'N/A'
         ].join(',')
       )
     ].join('\n');
@@ -514,6 +515,7 @@ const DWITSDashboard: React.FC = () => {
           background-size: 200% 100%;
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
+          background-clip: text;
           animation: shimmer 2s linear infinite;
         }
       `}</style>
@@ -738,7 +740,7 @@ const DWITSDashboard: React.FC = () => {
               <input type="text" placeholder="Search agents..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-[#2d3139] text-white border border-gray-700 rounded-lg pl-10 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm" />
             </div>
             <div className="flex items-center gap-2">
-               <button onClick={handleManualRefresh} className="p-2 bg-[#2d3139] hover:bg-gray-700 rounded-lg shadow-sm" title="Refresh">
+               <button onClick={handleManualRefresh} className="p-2 bg-[#2d3139] hover:bg-gray-700 rounded-lg shadow-sm">
                  <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
                </button>
                <button onClick={downloadCSV} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-sm">
@@ -762,10 +764,12 @@ const DWITSDashboard: React.FC = () => {
                 <div className="text-sm">Above 10</div>
                 <div className="text-sm">Commission (£)</div>
                 <div className="text-sm">Earned (£)</div>
-                <div className="text-sm">
+                <div className="text-sm flex items-center gap-1">
                   Bonus (£)
                   {!isTeamBonusUnlocked && (
-                    <Lock size={12} className="inline ml-1 text-yellow-500" title="Some bonuses pending unlock" />
+                    <span title="Some bonuses pending unlock">
+                      <Lock size={12} className="text-yellow-500" />
+                    </span>
                   )}
                 </div>
               </div>
@@ -809,7 +813,6 @@ const DWITSDashboard: React.FC = () => {
                             <button onClick={() => handleCommissionClick(agent)} className="text-blue-400 hover:text-blue-300 transition duration-150 text-base font-medium">
                               {formatCurrency(agent.commission)}
                             </button>
-                            {/* Show mini checkmark if any commission is earned */}
                             {getValidEarnedDetails(agent).length > 0 && (
                               <div className="flex items-center gap-1">
                                 <EarnedCheckmark size="sm" />
@@ -849,7 +852,7 @@ const DWITSDashboard: React.FC = () => {
                           </div>
                         </div>
 
-                        {/* ✅ ENHANCED Commission Breakdown Dropdown with Earned Checkmarks */}
+                        {/* Commission Breakdown Dropdown with Earned Checkmarks */}
                         {expandedAgentRank === agent.name && (
                           <div className="bg-[#2d3139] border-t border-gray-700 px-4 py-4">
                             <div className="flex items-center justify-between mb-3">
@@ -908,7 +911,6 @@ const DWITSDashboard: React.FC = () => {
                                   .map((pair, idx) => {
                                     const isRollover = (pair as RolloverCommission).isRollover;
                                     const isEarned = isPropertyEarned(agent, pair.propertyCode);
-                                    const earnedAmount = getEarnedAmount(agent, pair.propertyCode);
                                     
                                     return (
                                       <div 
