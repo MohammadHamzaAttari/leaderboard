@@ -977,12 +977,12 @@ const DWITSDashboard: React.FC = () => {
                                             {isEarned ? (
                                               <span className="flex items-center gap-1">
                                                 <CheckCircle2 size={12} />
-                                                Paid Out
+                                                tenants moved in
                                               </span>
                                             ) : (
                                               <span className="flex items-center gap-1">
                                                 <Clock size={12} />
-                                                Awaiting Payment
+                                                 tenant not yet moved in
                                               </span>
                                             )}
                                           </div>
